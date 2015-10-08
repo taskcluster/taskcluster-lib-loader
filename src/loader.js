@@ -5,155 +5,195 @@ let Promise = require('promise');
 let _ = require('lodash');
 let TopoSort = require('topo-sort');
 
-// We use this closure to create a .create() method which
-// returns a graphViz file for a given component directory
-function generateGraph(dir, vComp) {
-  let tsort = new TopoSort();
-
-  for (let x of _.keys(dir)) {
-    tsort.add(x, dir[x].requires || []);
+/** Validate component definition */
+function validateComponent(def, name) {
+  let e = "Invalid component definition: " + name;
+  // Check that it's an object
+  if (typeof(def) !== 'object' && def !== null && def !== undefined) {
+    throw new Error(e + ' must be an object, null or undefined');
   }
-
-  for (let x of _.keys(vComp)) {
-    tsort.add(x, vComp[x].requires || []);
+  // Check that is object has a setup function
+  if (!(def.setup instanceof Function)) {
+    throw new Error(e + ' is missing setup function');
   }
+  // If requires is defined, then we check that it's an array of strings
+  if (def.requires) {
+    if (!(def.requires instanceof Array)) {
+      throw new Error(e + ' if present, requires must be array');
+    }
+    // Check that all entries in def.requires are strings
+    if (!def.requires.every(entry => typeof(entry) === 'string')) {
+      throw new Error(e + ' all items in requires must be strings');
+    }
+  }
+}
 
-  let components = tsort.sort();
-
+/**
+ * Render componentDirectory to dot format for graphviz given a
+ * topologically sorted list of components
+ */
+function renderGraph(componentDirectory, sortedComponents) {
   let dot = [
-    '// This graph shows all dependencies for this loader',
-    '// including virtual dependencies.',
+    '// This graph shows all dependencies for this loader.',
     '// You might find http://www.webgraphviz.com/ useful!',
     '',
     'digraph G {',
   ];
 
-  for (let component of components) {
+  for (let component of sortedComponents) {
     dot.push(util.format('  "%s"', component));
-    let node = dir[component] || vComp[component];
-    for (let dependency of node.requires || []) {
-      dot.push(util.format('  "%s" -> "%s" [dir=back]', component, dependency));
+    let def = componentDirectory[component];
+    for (let dep of def.requires || []) {
+      dot.push(util.format('  "%s" -> "%s" [dir=back]', component, dep));
     }
   }
   dot.push('}');
 
-  dot = dot.join('\n');
-
-  return dot;
+  return dot.join('\n');
 }
 
-function loader(componentDirectory, requiredVirtualComponents = []) {
+/*
+ * Construct a component loader function.
+ *
+ * The `componentDirectory` is an object mapping from component names to
+ * component loaders as follows:
+ * ```js
+ * let load = loader({
+ *   // Component loader that always returns 'test'
+ *   profile: {
+ *     setup: () => 'test'
+ *   },
+ *
+ *   // Component loader that requires profile as input to the setup function
+ *   config: {
+ *     requires: ['profile'],
+ *     setup: (options) => {
+ *       return base.config({profile: options.profile});
+ *     }
+ *   },
+ *
+ *   // Component loader that loads asynchronously
+ *   requestedValue: {
+ *     requires: ['config'],
+ *     setup: async (options) => {
+ *       let res = await request.get(config.some_url).get().end();
+ *       return res.body;
+ *     }
+ *   },
+ *
+ *   // Component loader that requires more than one component
+ *   server: {
+ *     requires: ['config', 'requestedValue'],
+ *     setup: (options) => {
+ *       return server.startListening({
+ *         config: options.config,
+ *         input: options.requestedValues,
+ *       });
+ *     }
+ *   }
+ * });
+ * ```
+ * With this `load` function you can load the server using:
+ * ```js
+ * let server = await load('server');
+ * ```
+ * Naturally, you can also load config `await load('config');` which is useful
+ * for testing.
+ *
+ * Sometimes it's not convenient to hard code constant values into the component
+ * directory, in the example above someone might want to load the
+ * components with a different profile. Instead you can specify "profile" as
+ * a `virtualComponents`, then it must be provided as an options when loading.
+ *
+ * ```js
+ * let load = loader({
+ *   // Component loader that requires profile as input to the setup function
+ *   config: {
+ *     requires: ['profile'],
+ *     setup: (options) => {
+ *       return base.config({profile: options.profile});
+ *     }
+ *   }
+ * }, ['profile']);
+ * ```
+ *
+ * Then you'll be able to load config as:
+ * ```js
+ * let config = await load('config', {profile: 'test'});
+ * ```
+ */
+function loader (componentDirectory, virtualComponents = []) {
   assume(componentDirectory).is.an('object');
-  assume(requiredVirtualComponents).is.an('array');
-  assume(_.intersection(_.keys(componentDirectory), requiredVirtualComponents)).has.length(0);
+  assume(virtualComponents).is.an('array');
+  assume(_.intersection(
+    _.keys(componentDirectory), virtualComponents)
+  ).has.length(0);
+  componentDirectory = _.clone(componentDirectory);
 
-  let knownComponents = _.keys(componentDirectory).concat(requiredVirtualComponents);
-
-  return function(virtualComponents = {}) {
-    assume(virtualComponents).is.an('object');
-
-    let graphViz;
-    try {
-      graphViz = generateGraph(componentDirectory, virtualComponents);
-    } catch (err) {
-      if (err.message.match(/^At least \d+ circular dependency in nodes/)) {
-        let errStr = util.format('Cyclical dependency: %s', err.message);
-        debug(errStr);
-        throw new Error(errStr);
-      }
-      throw err;
-    }
-
-    let internalComponents = {
-      graphviz: graphViz,
-      table: '(╯°□°）╯︵ ┻━┻',
-    };
-    
-    for (let iComp of _.keys(internalComponents)) {
-      if (componentDirectory[iComp] || virtualComponents[iComp]) {
-        let errStr = iComp + ' is reserved for internal loader target';
-        debug(errStr);
-        throw new Error(errStr);
+  // Check for undefined components
+  _.forEach(componentDirectory, (def, name) => {
+    validateComponent(def, name);
+    for(let dep of def.requires || []) {
+      if (!componentDirectory[dep] && !virtualComponents.includes(dep)) {
+        throw new Error('Cannot require undefined component: ' + dep);
       }
     }
+  });
 
-    assume(virtualComponents).does.not.include('graphviz');
+  // Do topological sort to check for cycles
+  let tsort = new TopoSort();
+  _.forEach(componentDirectory, (def, name) => {
+    tsort.add(name, def.requires || []);
+  });
+  for (let name of virtualComponents) {
+    tsort.add(name, []);
+  }
+  let topoSorted = tsort.sort();
 
-    let initializedComponents = {};
+  // Add graphviz target, if it doesn't exist, we'll just render it as string
+  if (componentDirectory.graphviz || virtualComponents.includes('graphviz')) {
+    throw new Error('graphviz is reserved for an internal component');
+  }
+  componentDirectory.graphviz = {
+    setup: () => renderGraph(componentDirectory, topoSorted)
+  };
 
-    function loadComponent(name, visited = []) {
-      assume(name).to.be.ok();
-      assume(name).is.a('string');
-      assume(visited).is.an('array');
+  return function(target, options = {}) {
+    options = _.clone(options);
+    assume(target).is.a('string');
+    // Check that all virtual components are defined
+    assume(options).is.an('object');
+    for (let vComp of virtualComponents) {
+      assume(options[vComp]).exists();
+    }
 
-      if (internalComponents[name]) {
-        if (typeof internalComponents[name] === 'function') {
-          return internalComponents[name];
-        }
-        return internalComponents[name];
+    // Keep state of loaded components, make the virtual ones immediately loaded
+    let loaded = {};
+    for (let vComp of virtualComponents) {
+      loaded[vComp] = Promise.resolve(options[vComp]);
+    }
+
+    // Load a component
+    function load(target) {
+      if (!loaded[target]) {
+        var def = componentDirectory[target];
+        // Initialize component, this won't cause an infinite loop because
+        // we've already check that the componentDirectory is a DAG
+        let requires = def.requires || [];
+        return loaded[target] = Promise.all(requires.map(load)).then(deps => {
+          let ctx = {};
+          for(let i = 0; i < deps.length; i++) {
+            ctx[def.requires[i]] = deps[i];
+          }
+          return def.setup.call(null, ctx);
+        });
       }
-
-      if (visited.includes(name)) {
-        let errStr = 'Component ' + name + 
-          ' is involved in a dependency cycle with ' + JSON.stringify(visited);
-        debug(errStr);
-        throw new Error(errStr);
-      }
-
-      // If we already have initialized this component for this loader we don't
-      // want to re-initialize it
-      if (initializedComponents[name]) {
-        debug('Using previously loaded %s', name);
-        return initializedComponents[name];
-      }
-
-      // A virtual component is one that is not defined in the major directory.
-      // We define a second level of component directory which is mainly for
-      // doing things like presenting configuration values
-      let component;
-      if (requiredVirtualComponents.includes(name)) {
-        component = virtualComponents[name];
-        if (!component) {
-          let errStr = 'Component ' + name + ' must be a virtual component';
-          debug(errStr);
-          throw new Error(errStr);
-        }
-      } else {
-        component = componentDirectory[name];
-        if (!component) {
-          let errStr = 'Component ' + name + ' must not be a virtual component';
-          debug(errStr);
-          throw new Error(errStr);
-        }
-      }
-
-      let components = {};
-      let componentValue;
-
-      if (typeof component === 'object' && typeof component.setup === 'function') {
-        for (let requirement of component.requires || []) {
-          debug('loading requirement of %s: %s', name, requirement);
-          components[requirement] = loadComponent(requirement, visited.concat([name]));
-        }
-        componentValue = component.setup.call(null, components);
-      } else {
-        debug('component is a flat value');
-        componentValue = component;
-      }
-
-      if (!componentValue) {
-        console.log(component);
-        let errStr = 'Unable to initialize ' + name;
-        debug(errStr);
-        throw new Error(errStr);
-      }
-      initializedComponents[name] = Promise.resolve(componentValue);
-
-      return initializedComponents[name]; 
+      return loaded[target];
     };
 
-    return loadComponent;
+    return load(target);
   };
 };
 
+// Export loader
 module.exports = loader;
