@@ -283,6 +283,23 @@ describe('component loader', () => {
     assume(expected).equal(graph);
   });
 
+  it('should support graphviz with virtual components', async () => {
+    let a = {a: 1};
+
+    let load = subject({
+      test: {
+        requires: ['dep'],
+        setup: deps => {
+          return deps.dep;
+        }
+      }
+    }, ['dep']);
+
+    await load('graphviz', {
+      dep: a
+    });
+  });
+
   it('should fail when a virtual component is a dupe of a real one', () => {
     try {
       let load = subject({
