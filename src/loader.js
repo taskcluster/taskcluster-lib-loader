@@ -54,7 +54,7 @@ function renderGraph(componentDirectory, sortedComponents) {
     dot.push(util.format('  "%s"', component));
     let def = componentDirectory[component] || {};
     for (let dep of def.requires || []) {
-      dot.push(util.format('  "%s" -> "%s" [dir=back]', component, dep));
+      dot.push(util.format('  "%s" -> "%s" [dir=back]', dep, component));
     }
   }
   dot.push('}');
