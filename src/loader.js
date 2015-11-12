@@ -132,7 +132,7 @@ function renderGraph(componentDirectory, sortedComponents) {
  * let config = await load('config', {profile: 'test'});
  * ```
  */
-function loader (componentDirectory, virtualComponents = []) {
+function loader(componentDirectory, virtualComponents = []) {
   assume(componentDirectory).is.an('object');
   assume(virtualComponents).is.an('array');
   assume(_.intersection(
