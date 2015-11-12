@@ -160,12 +160,20 @@ function loader(componentDirectory, virtualComponents = []) {
   }
   let topoSorted = tsort.sort();
 
-  // Add graphviz target, if it doesn't exist, we'll just render it as string
+  // Add graphviz target
   if (componentDirectory.graphviz || includes(virtualComponents, 'graphviz')) {
     throw new Error('graphviz is reserved for an internal component');
   }
   componentDirectory.graphviz = {
     setup: () => renderGraph(componentDirectory, topoSorted)
+  };
+  // Add dump-dot target, which will print to terminal (useful for debugging)
+  if (componentDirectory['dump-dot'] ||
+      includes(virtualComponents, 'dump-dot')) {
+    throw new Error('dump-dot is reserved for an internal component');
+  }
+  componentDirectory['dump-dot'] = {
+    setup: () => console.log(renderGraph(componentDirectory, topoSorted))
   };
 
   return function(target, options = {}) {
