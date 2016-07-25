@@ -1,6 +1,5 @@
 let util = require('util');
 let assume = require('assume');
-let debug = require('debug')('taskcluster:loader');
 let Promise = require('promise');
 let _ = require('lodash');
 let TopoSort = require('topo-sort');
@@ -179,7 +178,7 @@ function loader(componentDirectory, virtualComponents = []) {
   return function(target, options = {}) {
     options = _.clone(options);
     if (typeof target !== 'string') {
-      debug(`Target is type ${typeof target}, not string`);
+      new Error(`Target is type ${typeof target}, not string`);
     }
     // Check that all virtual components are defined
     if (typeof options !== 'object') {
