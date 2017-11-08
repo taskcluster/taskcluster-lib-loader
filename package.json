@@ -8,7 +8,7 @@
   },
   "scripts": {
     "test": "mocha ./.test/*.js",
-    "compile": "babel-compile -c tc-rules/babel src:lib test:.test",
+    "compile": "babel-compile -p taskcluster src:lib test:.test",
     "lint": "eslint src/*.js test/*.js",
     "pretest": "yarn lint && yarn compile",
     "prepare": "yarn compile"
@@ -41,8 +41,8 @@
   },
   "devDependencies": {
     "babel-compile": "0.0.2",
+    "babel-preset-taskcluster": "^3.0.0",
     "eslint-config-taskcluster": "^3.0.0",
-    "mocha": "^2.3.3",
-    "tc-rules": "^1.0.6"
+    "mocha": "^2.3.3"
   }
 }
