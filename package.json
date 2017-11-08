@@ -7,10 +7,11 @@
     "test": "test"
   },
   "scripts": {
-    "test": "./test/runtests.sh",
+    "test": "mocha ./.test/*.js",
     "compile": "babel-compile -c tc-rules/babel src:lib test:.test",
-    "pretest": "npm run compile",
-    "prepublish": "npm run compile"
+    "lint": "eslint src/*.js test/*.js",
+    "pretest": "yarn lint && yarn compile",
+    "prepare": "yarn compile"
   },
   "files": [
     "lib"
@@ -40,7 +41,8 @@
   },
   "devDependencies": {
     "babel-compile": "0.0.2",
-    "tc-rules": "^1.0.6",
-    "mocha": "^2.3.3"
+    "eslint-config-taskcluster": "^3.0.0",
+    "mocha": "^2.3.3",
+    "tc-rules": "^1.0.6"
   }
 }
