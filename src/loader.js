@@ -209,10 +209,56 @@ function loader(componentDirectory, virtualComponents = []) {
         let requires = def.requires || [];
         return loaded[target] = Promise.all(requires.map(load)).then(deps => {
           let ctx = {};
+
           for (let i = 0; i < deps.length; i++) {
             ctx[def.requires[i]] = deps[i];
           }
-          return def.setup.call(null, ctx);
+
+          let setupReturn;
+
+          // For synchronous setup(), we're going to try to catch errors before
+          // logging them and turning the error into a promise rejection
+          try {
+            setupReturn = def.setup.call(null, ctx);
+          } catch (err) {
+            debug(`error running setup for ${target}: ${err.stack || err}`);
+            return Promise.reject(err);
+          }
+
+          // For asynchronous setup(), we're going to call their .then() and
+          // only in the case of a promise rejection, will we log the error
+          // stack and reject with that error;
+          if (typeof setupReturn === 'object' && typeof setupReturn.then === 'function') {
+            return new Promise((resolve, reject) => {
+              // We're doing this in a try/catch because we're checking for
+              // promise-ness by checking to see if the return value looks like
+              // a promise.  Given that the chances of getting exactly an
+              // object with exactly a '.then()' which isn't a promise are
+              // fairly low, it's unlikely that we're going to encounter any
+              // problems.
+              //
+              // Just in case, though, we're going to catch any sync errors
+              // returned by this invokation and reject with a wrapped error
+              // message that indicates which component had this issue.
+              //
+              // If you're here trying to debug an error with this error
+              // message, chances are that you're returning the wrong thing
+              // from your component's .setup() method.
+              try {
+                setupReturn.then(resolve, err => {
+                  debug(`error running setup for ${target}: ${err.stack || err}`);
+                  return reject(err);
+                });
+              } catch (err) {
+                let rejectionValue = new Error(`error running .then() on ${target}'s setup()`);
+                rejectionValue.thingThened = setupReturn;
+                rejectionValue.err = err;
+                return reject(rejectionValue);
+              }
+            });
+          } else {
+            return Promise.resolve(setupReturn);
+          }
         });
       }
       return loaded[target];
