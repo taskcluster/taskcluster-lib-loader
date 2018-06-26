@@ -3,6 +3,7 @@ let assume = require('assume');
 let Promise = require('promise');
 let _ = require('lodash');
 let TopoSort = require('topo-sort');
+let debug = require('debug')('taskcluster-lib-loader');
 
 // see babel issue 2215
 function includes(a, v) {
