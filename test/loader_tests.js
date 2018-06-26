@@ -171,6 +171,25 @@ describe('component loader', () => {
     assert(false, 'Expected an exception');
   });
 
+  it('should fail when a setup function returns a rejected promise', async () => {
+    let load = subject({
+      fail: {
+        requires: [],
+        setup: () => Promise.reject(new Error('uhoh!')),
+      },
+    });
+
+    try {
+      await load('fail');
+    } catch (e) {
+      if (!e.message.match(/uhoh!/)) {
+        throw e;
+      }
+      return; // Ignore expected error
+    }
+    assert(false, 'Expected an exception');
+  });
+
   it('should fail when an async setup function fails', async () => {
     let load = subject({
       fail: {
