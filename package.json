@@ -30,14 +30,13 @@
   },
   "homepage": "https://github.com/taskcluster/taskcluster-lib-loader",
   "dependencies": {
-    "assume": "^1.5.2",
-    "debug": "^3.1.0",
-    "lodash": "^4.17.4",
-    "promise": "^8.0.1",
+    "assume": "^2.1.0",
+    "debug": "^4.1.0",
+    "lodash": "^4.17.11",
     "topo-sort": "^1.0.0"
   },
   "devDependencies": {
-    "eslint-config-taskcluster": "^3.0.0",
-    "mocha": "^4.0.1"
+    "eslint-config-taskcluster": "^3.2.0",
+    "mocha": "^5.2.0"
   }
 }
